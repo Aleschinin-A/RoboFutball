@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "../MPU/MPU.h"
+#include "../PID_Lib/PID_Lib.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -70,7 +71,14 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+char msgBuffer[50];
+uint16_t ch_data[16] = {0};
+uint8_t channel = 0;
+int16_t Angle_Motor[3] = {0};
 
+#define U_max 42 // max угл-скор колеса рад/с
+#define r 1 // радиус колеса мм
+#define d 1 // раст от центра до колеса мм
 /* USER CODE END 0 */
 
 /**
@@ -110,13 +118,22 @@ int main(void)
   MX_I2C1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_1);
+  HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_2);
+  Init_Encoders();
+  //Calibration_MPU(&hi2c1, 100);
+  Init_PWM();
+  for (uint8_t i = 0; i < sizeof(msgBuffer); i++) {
+	  msgBuffer[i] = ' ';
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+  while (1){
+	  //Get_MPU(10);
+	  Speed_Convert(ch_data[0], ch_data[1], ch_data[2]);
+	  Dribling(ch_data[3]);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -224,9 +241,9 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 94;
+  htim1.Init.Prescaler = 376;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 1024;
+  htim1.Init.Period = 255;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -579,6 +596,148 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim){
+	if(htim->Instance == TIM2){
+		Angle_Motor[0] = __HAL_TIM_GET_COUNTER(htim) - 32767; // - обработка первого энкодера по таймеру
+	}
+	if(htim->Instance == TIM3){
+		Angle_Motor[1] = __HAL_TIM_GET_COUNTER(htim) - 32767; // - обработка второго энкодера по таймеру
+	}
+	if(htim->Instance == TIM4){
+		Angle_Motor[2] = __HAL_TIM_GET_COUNTER(htim) - 32767; // - обработка третьего энкодера по таймеру
+	}
+
+	if(htim->Instance == TIM5){ // - Обработка каналов приёмника
+		if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1){ // или HAL_TIM_ACTIVE_CHANNEL_2, пока хз
+			uint16_t temp;
+			temp = HAL_TIM_ReadCapturedValue(&htim5, TIM_CHANNEL_1); // или TIM_CHANNEL_2, пока хз
+			if(temp >= 5000){ // - ширина между пакетами
+				channel = 0;
+			}
+			else{
+				ch_data[channel] = temp;
+				channel++;
+			}
+		}
+	}
+}
+
+void Init_Encoders(){
+	HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_1);
+	__HAL_TIM_SET_COUNTER(&htim2, 0x7FFF); //установка среднего значения = 32767
+	HAL_TIM_Encoder_Start_IT(&htim3, TIM_CHANNEL_1);
+	__HAL_TIM_SET_COUNTER(&htim3, 0x7FFF); //установка среднего значения = 32767
+	HAL_TIM_Encoder_Start_IT(&htim4, TIM_CHANNEL_1);
+	__HAL_TIM_SET_COUNTER(&htim4, 0x7FFF); //установка среднего значения = 32767
+}
+
+void Init_PWM(){
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+}
+
+void Speed_Convert(int V_x, int V_y, int W){ // - (скор x мм/c, скор y мм/с, угл-скор рад/с)
+	int W_max = U_max * r / (d * 2);
+	if(W > W_max) W = W_max;
+	if(W < W_max * -1) W = W_max * -1;
+	int V_max = ((U_max * r) - (d * abs(W))) * 0.58;
+	if(V_x > V_max) V_x = V_max;
+	if(V_x < V_max * -1) V_x = V_max * -1;
+	if(V_y > V_max) V_y = V_max;
+	if(V_y < V_max * -1) V_y = V_max * -1;
+	int u1 = (V_x - d * W) / r;
+	int u2 = -1 * (d * W  + V_x / 2 + V_y * 0.86) / r;
+	int u3 = (V_y * 0.86 - V_x / 2 - d * W) / r;
+	sprintf(msgBuffer, "$ %d %d %d %d %d %d;\r\n", V_x, V_y, W, u1, u2, u3);
+	HAL_UART_Transmit_IT(&huart1, (uint8_t*) msgBuffer, sizeof(msgBuffer));
+	Moove(u1, u2, u3);
+}
+
+void Moove(int speed_A, int speed_B, int speed_C){ // - скорость в рад/с
+	Motor_direction_A(PID_Speed_A(speed_A * 0.71, Angle_Motor[0], 20));
+	Motor_direction_B(PID_Speed_B(speed_B * 0.71, Angle_Motor[1], 20));
+	Motor_direction_C(PID_Speed_C(speed_C * 0.71, Angle_Motor[2], 20));
+}
+
+void Dribling(int ch){
+	if(ch >= 800){
+		Motor_direction_D(255);
+	}
+	else{
+		Motor_direction_D(-255);
+	}
+}
+
+void Stupenika_TEST(int vel1, int vel2, int dT){ // - скорость в рад/с
+	static long T_last;
+	static int vel;
+	static int i;
+	if(HAL_GetTick() - T_last >= dT){
+		if(i == 0){
+			vel = vel1;
+			i = 1;
+		}
+		else{
+			vel = vel2;
+			i = 0;
+		}
+		T_last = HAL_GetTick();
+	}
+	int Out = PID_Speed_A(vel * 0.71, Angle_Motor[0], 20);
+	sprintf(msgBuffer, "$ %d %d %d;\r\n", vel * 0.71, Return_OO_Vel_A() / 0.71, Out);
+	HAL_UART_Transmit_IT(&huart1, (uint8_t*) msgBuffer, sizeof(msgBuffer));
+	Motor_direction_A(Out);
+}
+
+void Motor_direction_A(int Out){ // - управление мотором A
+	TIM1->CCR1 = abs(Out);
+	if(Out >= 0){
+		HAL_GPIO_WritePin(IN1_GPIO_Port, IN1_Pin, 1);
+		HAL_GPIO_WritePin(IN2_GPIO_Port, IN2_Pin, 0);
+	}
+	else{
+		HAL_GPIO_WritePin(IN1_GPIO_Port, IN1_Pin, 0);
+		HAL_GPIO_WritePin(IN2_GPIO_Port, IN2_Pin, 1);
+	}
+}
+
+void Motor_direction_B(int Out){ // - управление мотором B
+	TIM1->CCR2 = abs(Out);
+	if(Out >= 0){
+		HAL_GPIO_WritePin(IN3_GPIO_Port, IN3_Pin, 1);
+		HAL_GPIO_WritePin(IN4_GPIO_Port, IN4_Pin, 0);
+	}
+	else{
+		HAL_GPIO_WritePin(IN3_GPIO_Port, IN3_Pin, 0);
+		HAL_GPIO_WritePin(IN4_GPIO_Port, IN4_Pin, 1);
+	}
+}
+
+void Motor_direction_C(int Out){ // - управление мотором C
+	TIM1->CCR3 = abs(Out);
+	if(Out >= 0){
+		HAL_GPIO_WritePin(IN5_GPIO_Port, IN5_Pin, 1);
+		HAL_GPIO_WritePin(IN6_GPIO_Port, IN6_Pin, 0);
+	}
+	else{
+		HAL_GPIO_WritePin(IN5_GPIO_Port, IN5_Pin, 0);
+		HAL_GPIO_WritePin(IN6_GPIO_Port, IN6_Pin, 1);
+	}
+}
+
+void Motor_direction_D(int Out){ // - управление мотором D
+	TIM1->CCR4 = abs(Out);
+	if(Out >= 0){
+		HAL_GPIO_WritePin(IN7_GPIO_Port, IN7_Pin, 1);
+		HAL_GPIO_WritePin(IN8_GPIO_Port, IN8_Pin, 0);
+	}
+	else{
+		HAL_GPIO_WritePin(IN7_GPIO_Port, IN7_Pin, 0);
+		HAL_GPIO_WritePin(IN8_GPIO_Port, IN8_Pin, 1);
+	}
+}
 /* USER CODE END 4 */
 
 /**

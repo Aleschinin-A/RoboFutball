@@ -1,0 +1,4 @@
+../Core/MPU/MPU.c:24:6:Get_MPU	2
+../Core/MPU/MPU.c:38:6:Calibration_MPU	2
+../Core/MPU/MPU.c:52:8:Return_MPU_Angle	1
+../Core/MPU/MPU.c:56:8:Return_MPU_Rotational_Speed	1
