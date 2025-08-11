@@ -72,7 +72,7 @@ static void MX_USART1_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 char msgBuffer[50];
-uint16_t ch_data[16] = {0};
+int16_t ch_data[16] = {0};
 uint8_t channel = 0;
 int16_t Angle_Motor[3] = {0};
 
@@ -132,9 +132,9 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1){
 	  //Get_MPU(10);
-	  //Speed_Convert((ch_data[3] - 1100) * 1.46, (ch_data[2] - 1100) * 1.46, (ch_data[0] - 1100) * -0.012);
-	  //Dribling(ch_data[4]);
-	  Print_Channels();
+	  Speed_Convert((int)((ch_data[3] - 1075)*1.5),(int)((ch_data[2] - 1075)*1.5), (ch_data[0] - 1075));
+//	  Dribling(ch_data[4]);
+//	  Print_Channels();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -612,7 +612,7 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim){
 		if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2){
 			uint16_t temp;
 			temp = HAL_TIM_ReadCapturedValue(&htim5, TIM_CHANNEL_2);
-			if(temp >= 6000){ // - ширина между пакетами
+			if(temp >= 5000){ // - ширина между пакетами
 				channel = 0;
 			}
 			else{
@@ -639,11 +639,14 @@ void Init_PWM(){
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
 }
 
-void Speed_Convert(int V_x, int V_y, float W){ // - (скор x мм/c, скор y мм/с, угл-скор рад/с)
-	float W_max = U_max * r / (d * 2);
+void Speed_Convert(int V_x, int V_y, int W_in){ // - (скор x мм/c, скор y мм/с, угл-скор рад/с)
+	double W = -W_in/83.0;
+	double W_max = U_max * r / (d * 2);
+	V_x *= -1;
+	V_y *= -1;
 	if(W > W_max) W = W_max;
 	if(W < W_max * -1) W = W_max * -1;
-	int V_max = ((U_max * r) - (d * abs((int) W))) * 0.58;
+	int V_max = ((U_max * r) - (d * (abs((int) W)+1))) * 0.58;
 	if(V_x > V_max) V_x = V_max;
 	if(V_x < V_max * -1) V_x = V_max * -1;
 	if(V_y > V_max) V_y = V_max;
@@ -651,9 +654,14 @@ void Speed_Convert(int V_x, int V_y, float W){ // - (скор x мм/c, скор
 	int u1 = (int) ((V_x - d * W) / r);
 	int u2 = (int) (-1 * (d * W  + V_x / 2 + V_y * 0.86) / r);
 	int u3 = (int) ((V_y * 0.86 - V_x / 2 - d * W) / r);
-	sprintf(msgBuffer, "$ %d %d %f %d %d %d;\r\n", V_x, V_y, W, u1, u2, u3);
+	sprintf(msgBuffer, "$ %d %lf & %d %d %lf %d %d %d;\r\n",V_max,W_max, V_x, V_y, W, u1, u2, u3);
+//	sprintf(msgBuffer, "$ %d %d %f %d %d %d ;\r\n", V_x, V_y, W, u1, u2, u3);
+//	sprintf(msgBuffer, "$ %d %d %d %lf;\r\n",V_x, V_y,V_max, W);
+
+//	sprintf(msgBuffer, , );
 	HAL_UART_Transmit_IT(&huart1, (uint8_t*) msgBuffer, sizeof(msgBuffer));
-	Moove(u1, u2, u3);
+	HAL_Delay(20);
+//	Moove(u1, u2, u3);
 }
 
 void Moove(int speed_A, int speed_B, int speed_C){ // - скорость в рад/с
