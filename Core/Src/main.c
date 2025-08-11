@@ -77,8 +77,8 @@ uint8_t channel = 0;
 int16_t Angle_Motor[3] = {0};
 
 #define U_max 42 // max угл-скор колеса рад/с
-#define r 1 // радиус колеса мм
-#define d 1 // раст от центра до колеса мм
+#define r 30 // радиус колеса мм
+#define d 103 // раст от центра до колеса мм
 /* USER CODE END 0 */
 
 /**
@@ -132,8 +132,9 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1){
 	  //Get_MPU(10);
-	  Speed_Convert(ch_data[0], ch_data[1], ch_data[2]);
-	  Dribling(ch_data[3]);
+	  //Speed_Convert((ch_data[3] - 1100) * 1.46, (ch_data[2] - 1100) * 1.46, (ch_data[0] - 1100) * -0.012);
+	  //Dribling(ch_data[4]);
+	  Print_Channels();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -480,7 +481,7 @@ static void MX_TIM5_Init(void)
   }
   sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;
   sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;
-  sSlaveConfig.TriggerPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
+  sSlaveConfig.TriggerPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
   sSlaveConfig.TriggerFilter = 0;
   if (HAL_TIM_SlaveConfigSynchro(&htim5, &sSlaveConfig) != HAL_OK)
   {
@@ -492,7 +493,7 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
   sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
   sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
   sConfigIC.ICFilter = 0;
@@ -500,7 +501,7 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
   sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
   {
@@ -608,10 +609,10 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim){
 	}
 
 	if(htim->Instance == TIM5){ // - Обработка каналов приёмника
-		if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1){ // или HAL_TIM_ACTIVE_CHANNEL_2, пока хз
+		if(htim->Channel == HAL_TIM_ACTIVE_CHANNEL_2){
 			uint16_t temp;
-			temp = HAL_TIM_ReadCapturedValue(&htim5, TIM_CHANNEL_1); // или TIM_CHANNEL_2, пока хз
-			if(temp >= 5000){ // - ширина между пакетами
+			temp = HAL_TIM_ReadCapturedValue(&htim5, TIM_CHANNEL_2);
+			if(temp >= 6000){ // - ширина между пакетами
 				channel = 0;
 			}
 			else{
@@ -638,19 +639,19 @@ void Init_PWM(){
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
 }
 
-void Speed_Convert(int V_x, int V_y, int W){ // - (скор x мм/c, скор y мм/с, угл-скор рад/с)
-	int W_max = U_max * r / (d * 2);
+void Speed_Convert(int V_x, int V_y, float W){ // - (скор x мм/c, скор y мм/с, угл-скор рад/с)
+	float W_max = U_max * r / (d * 2);
 	if(W > W_max) W = W_max;
 	if(W < W_max * -1) W = W_max * -1;
-	int V_max = ((U_max * r) - (d * abs(W))) * 0.58;
+	int V_max = ((U_max * r) - (d * abs((int) W))) * 0.58;
 	if(V_x > V_max) V_x = V_max;
 	if(V_x < V_max * -1) V_x = V_max * -1;
 	if(V_y > V_max) V_y = V_max;
 	if(V_y < V_max * -1) V_y = V_max * -1;
-	int u1 = (V_x - d * W) / r;
-	int u2 = -1 * (d * W  + V_x / 2 + V_y * 0.86) / r;
-	int u3 = (V_y * 0.86 - V_x / 2 - d * W) / r;
-	sprintf(msgBuffer, "$ %d %d %d %d %d %d;\r\n", V_x, V_y, W, u1, u2, u3);
+	int u1 = (int) ((V_x - d * W) / r);
+	int u2 = (int) (-1 * (d * W  + V_x / 2 + V_y * 0.86) / r);
+	int u3 = (int) ((V_y * 0.86 - V_x / 2 - d * W) / r);
+	sprintf(msgBuffer, "$ %d %d %f %d %d %d;\r\n", V_x, V_y, W, u1, u2, u3);
 	HAL_UART_Transmit_IT(&huart1, (uint8_t*) msgBuffer, sizeof(msgBuffer));
 	Moove(u1, u2, u3);
 }
@@ -662,8 +663,11 @@ void Moove(int speed_A, int speed_B, int speed_C){ // - скорость в ра
 }
 
 void Dribling(int ch){
-	if(ch >= 800){
+	if(ch < 700){
 		Motor_direction_D(255);
+	}
+	else if(ch > 1000 && ch < 1200){
+		Motor_direction_D(0);
 	}
 	else{
 		Motor_direction_D(-255);
@@ -737,6 +741,12 @@ void Motor_direction_D(int Out){ // - управление мотором D
 		HAL_GPIO_WritePin(IN7_GPIO_Port, IN7_Pin, 0);
 		HAL_GPIO_WritePin(IN8_GPIO_Port, IN8_Pin, 1);
 	}
+}
+
+void Print_Channels(){
+	sprintf(msgBuffer, "$ %d %d %d %d %d %d;\r\n", ch_data[0], ch_data[1], ch_data[2], ch_data[3], ch_data[4], ch_data[5]);
+	HAL_UART_Transmit_IT(&huart1, (uint8_t*) msgBuffer, sizeof(msgBuffer));
+	HAL_Delay(20);
 }
 /* USER CODE END 4 */
 
