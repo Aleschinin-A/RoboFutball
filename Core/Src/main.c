@@ -126,15 +126,18 @@ int main(void)
   for (uint8_t i = 0; i < sizeof(msgBuffer); i++) {
 	  msgBuffer[i] = ' ';
   }
+  HAL_Delay(2000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1){
 	  //Get_MPU(10);
+
 	  Speed_Convert((int)((ch_data[3] - 1075)*1.5),(int)((ch_data[2] - 1075)*1.5), (ch_data[0] - 1075));
 //	  Dribling(ch_data[4]);
-//	  Print_Channels();
+	  Print_Channels();
+	  //Stupenika_TEST(0, 30, 2000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -616,7 +619,7 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim){
 				channel = 0;
 			}
 			else{
-				ch_data[channel] = temp;
+				ch_data[channel] = f_zone(temp);
 				channel++;
 			}
 		}
@@ -659,15 +662,18 @@ void Speed_Convert(int V_x, int V_y, int W_in){ // - (скор x мм/c, ско�
 //	sprintf(msgBuffer, "$ %d %d %d %lf;\r\n",V_x, V_y,V_max, W);
 
 //	sprintf(msgBuffer, , );
-	HAL_UART_Transmit_IT(&huart1, (uint8_t*) msgBuffer, sizeof(msgBuffer));
+	//HAL_UART_Transmit_IT(&huart1, (uint8_t*) msgBuffer, sizeof(msgBuffer));
 	HAL_Delay(20);
-//	Moove(u1, u2, u3);
+	Moove(u1, u2, u3);
 }
 
 void Moove(int speed_A, int speed_B, int speed_C){ // - скорость в рад/с
-	Motor_direction_A(PID_Speed_A(speed_A * 0.71, Angle_Motor[0], 20));
-	Motor_direction_B(PID_Speed_B(speed_B * 0.71, Angle_Motor[1], 20));
-	Motor_direction_C(PID_Speed_C(speed_C * 0.71, Angle_Motor[2], 20));
+	//Motor_direction_A(PID_Speed_A(speed_A * 0.71, Angle_Motor[0], 20));
+	Motor_direction_A((int)(speed_A * 8));
+	Motor_direction_B((int)(speed_B * 8));
+	Motor_direction_C((int)(speed_C * 8));
+	//Motor_direction_B(PID_Speed_B(speed_B * 0.71, Angle_Motor[1], 20));
+	//Motor_direction_C(PID_Speed_C(speed_C * 0.71, Angle_Motor[2], 20));
 }
 
 void Dribling(int ch){
@@ -697,10 +703,10 @@ void Stupenika_TEST(int vel1, int vel2, int dT){ // - скорость в рад
 		}
 		T_last = HAL_GetTick();
 	}
-	int Out = PID_Speed_A(vel * 0.71, Angle_Motor[0], 20);
-	sprintf(msgBuffer, "$ %d %d %d;\r\n", vel * 0.71, Return_OO_Vel_A() / 0.71, Out);
+	int Out = PID_Speed_C(vel * 0.71, Angle_Motor[2], 20);
+	sprintf(msgBuffer, "$ %f %f %d;\r\n", vel * 0.71, Return_OO_Vel_C() / 0.71, Angle_Motor[2]);
 	HAL_UART_Transmit_IT(&huart1, (uint8_t*) msgBuffer, sizeof(msgBuffer));
-	Motor_direction_A(Out);
+	Motor_direction_C(Out);
 }
 
 void Motor_direction_A(int Out){ // - управление мотором A
@@ -756,6 +762,20 @@ void Print_Channels(){
 	HAL_UART_Transmit_IT(&huart1, (uint8_t*) msgBuffer, sizeof(msgBuffer));
 	HAL_Delay(20);
 }
+
+int f_zone(int ch){
+	if(ch < 1150 && ch > 1000){
+		return 1075;
+	}
+	else{
+		return ch;
+	}
+}
+ void died_zone(){
+	 for(int i=0; i < 16; i++){
+		 ch_data[i] = f_zone(ch_data[i]);
+	 }
+ }
 /* USER CODE END 4 */
 
 /**

@@ -12,14 +12,15 @@ int oo_vel_B;
 int oo_vel_C;
 
 int PID_Speed_A(int y_vel, int alf, int dT){  // - Регулятор скорости мотора (заданная скорость в тик/dT мс, положение в тик, dT в мс)
-	#define Max_I 400
-	#define Min_I -400
+	#define Max_I 100
+	#define Min_I -100
 	#define Max_Out 255
 	#define Min_Out -255
 
-	#define Kp 40
-	#define Ki 0.5
-	#define Kd 80
+	#define Kp 20
+	#define Ki 0.05
+	#define Kd 10
+
 
 	static int Sum;
 	static int Last_Err;
@@ -32,7 +33,7 @@ int PID_Speed_A(int y_vel, int alf, int dT){  // - Регулятор скоро
 		oo_vel_A = alf - last_alf;
 		int err = y_vel - oo_vel_A;
 		// PID
-		if((err < 1 && err > -1)) Sum = 0;
+		if((err < 2 && err > -2)) Sum = 0;
 		if(Sum > Max_I) Sum = Max_I;
 		if(Sum < Min_I) Sum = Min_I;
 		Sum = Sum + err;
@@ -49,14 +50,14 @@ int PID_Speed_A(int y_vel, int alf, int dT){  // - Регулятор скоро
 }
 
 int PID_Speed_B(int y_vel, int alf, int dT){  // - Регулятор скорости мотора (заданная скорость в тик/dT мс, положение в тик, dT в мс)
-	#define Max_I 400
-	#define Min_I -400
+	#define Max_I 100
+	#define Min_I -100
 	#define Max_Out 255
 	#define Min_Out -255
 
-	#define Kp 40
-	#define Ki 0.5
-	#define Kd 80
+	#define Kp 20
+	#define Ki 0.05
+	#define Kd 10
 
 	static int Sum;
 	static int Last_Err;
@@ -69,7 +70,7 @@ int PID_Speed_B(int y_vel, int alf, int dT){  // - Регулятор скоро
 		oo_vel_B = alf - last_alf;
 		int err = y_vel - oo_vel_B;
 		// PID
-		if((err < 1 && err > -1)) Sum = 0;
+		if((err < 2 && err > -2)) Sum = 0;
 		if(Sum > Max_I) Sum = Max_I;
 		if(Sum < Min_I) Sum = Min_I;
 		Sum = Sum + err;
@@ -86,14 +87,14 @@ int PID_Speed_B(int y_vel, int alf, int dT){  // - Регулятор скоро
 }
 
 int PID_Speed_C(int y_vel, int alf, int dT){  // - Регулятор скорости мотора (заданная скорость в тик/dT мс, положение в тик, dT в мс)
-	#define Max_I 400
-	#define Min_I -400
+	#define Max_I 100
+	#define Min_I -100
 	#define Max_Out 255
 	#define Min_Out -255
 
-	#define Kp 40
-	#define Ki 0.5
-	#define Kd 80
+	#define Kp 20
+	#define Ki 0.05
+	#define Kd 10
 
 	static int Sum;
 	static int Last_Err;
@@ -106,7 +107,7 @@ int PID_Speed_C(int y_vel, int alf, int dT){  // - Регулятор скоро
 		oo_vel_C = alf - last_alf;
 		int err = y_vel - oo_vel_C;
 		// PID
-		if((err < 1 && err > -1)) Sum = 0;
+		if((err < 2 && err > -2)) Sum = 0;
 		if(Sum > Max_I) Sum = Max_I;
 		if(Sum < Min_I) Sum = Min_I;
 		Sum = Sum + err;
